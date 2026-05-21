@@ -1,0 +1,1106 @@
+--// Aghata Hub v4.0 - Hitbox + Bring + Noclip + Character Swapper
+--// Adicionado: Menu de troca de personagem sem ir ao lobby
+
+local Players = game:GetService("Players")
+local Lighting = game:GetService("Lightning")
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local StarterGui = game:GetService("StarterGui")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+task.wait(0.5)
+
+-- Configurações
+local Settings = {
+    NoclipEnabled = false,
+    TargetNoclipEnabled = false,
+    HitboxEnabled = false,
+    HitboxSize = 5,
+    SelectedPlayer = nil,
+    SelectedCharacter = nil
+}
+
+-- Variáveis
+local currentEffect = nil
+local currentConnection = nil
+local noclipConnection = nil
+local targetNoclipConnection = nil
+local hitboxConnections = {}
+local characterList = {}  -- Lista de personagens disponíveis
+
+-- Limpar GUI antiga
+pcall(function()
+    if game.CoreGui:FindFirstChild("AghataHub") then
+        game.CoreGui.AghataHub:Destroy()
+    end
+end)
+
+-- GUI Principal
+local gui = Instance.new("ScreenGui")
+gui.Name = "AghataHub"
+gui.ResetOnSpawn = false
+gui.Parent = game.CoreGui
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+-- CORES
+local PurpleColor = Color3.fromRGB(128, 0, 255)
+local DarkPurple = Color3.fromRGB(75, 0, 130)
+local LightPurple = Color3.fromRGB(156, 81, 255)
+local RedColor = Color3.fromRGB(255, 0, 0)
+local GreenColor = Color3.fromRGB(0, 255, 0)
+
+-- DRAG SYSTEM
+local function MakeDraggable(frame, handle)
+    handle = handle or frame
+    local dragging = false
+    local dragStart = nil
+    local startPos = nil
+    
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+        end
+    end)
+    
+    handle.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+    
+    UIS.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
+
+-- MINI BUTTON
+local mini = Instance.new("TextButton")
+mini.Size = UDim2.new(0,40,0,40)
+mini.Position = UDim2.new(0.02,0,0.3,0)
+mini.BackgroundColor3 = PurpleColor
+mini.Text = "⭐"
+mini.TextColor3 = Color3.new(1,1,1)
+mini.TextSize = 20
+mini.Font = Enum.Font.GothamBold
+mini.BackgroundTransparency = 0.1
+mini.Visible = false
+mini.Parent = gui
+
+local miniCorner = Instance.new("UICorner")
+miniCorner.CornerRadius = UDim.new(1,0)
+miniCorner.Parent = mini
+MakeDraggable(mini)
+
+-- MAIN FRAME (AUMENTADO PARA INCLUIR O MENU DE PERSONAGENS)
+local main = Instance.new("Frame")
+main.Size = UDim2.new(0,750,0,450)  -- Aumentado
+main.Position = UDim2.new(0.5,-375,0.5,-225)
+main.BackgroundColor3 = Color3.fromRGB(15,15,15)
+main.BackgroundTransparency = 0.05
+main.BorderSizePixel = 0
+main.Parent = gui
+
+local mainShadow = Instance.new("UICorner")
+mainShadow.CornerRadius = UDim.new(0,12)
+mainShadow.Parent = main
+
+-- TOP BAR
+local top = Instance.new("Frame")
+top.Size = UDim2.new(1,0,0,35)
+top.BackgroundColor3 = DarkPurple
+top.BackgroundTransparency = 0.1
+top.Parent = main
+
+local topCorner = Instance.new("UICorner")
+topCorner.CornerRadius = UDim.new(0,12)
+topCorner.Parent = top
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1,-40,1,0)
+title.Position = UDim2.new(0,10,0,0)
+title.BackgroundTransparency = 1
+title.Text = "AGHATA HUB v4.0 - CHARACTER SWAPPER"
+title.TextColor3 = LightPurple
+title.TextSize = 14
+title.Font = Enum.Font.GothamBold
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = top
+
+local minimize = Instance.new("TextButton")
+minimize.Size = UDim2.new(0,25,0,25)
+minimize.Position = UDim2.new(1,-32,0,5)
+minimize.BackgroundColor3 = PurpleColor
+minimize.Text = "−"
+minimize.TextColor3 = Color3.new(1,1,1)
+minimize.TextSize = 18
+minimize.Font = Enum.Font.GothamBold
+minimize.Parent = top
+
+local minCorner = Instance.new("UICorner")
+minCorner.CornerRadius = UDim.new(0,5)
+minCorner.Parent = minimize
+
+-- ========== PAINEL DE PLAYERS (ESQUERDA) ==========
+local playerFrame = Instance.new("Frame")
+playerFrame.Size = UDim2.new(0,220,1,-45)
+playerFrame.Position = UDim2.new(0,5,0,40)
+playerFrame.BackgroundColor3 = Color3.fromRGB(25,25,25)
+playerFrame.BorderSizePixel = 0
+playerFrame.Parent = main
+
+local playerCorner = Instance.new("UICorner")
+playerCorner.CornerRadius = UDim.new(0,8)
+playerCorner.Parent = playerFrame
+
+local playerScroll = Instance.new("ScrollingFrame")
+playerScroll.Size = UDim2.new(1,-10,1,-10)
+playerScroll.Position = UDim2.new(0,5,0,5)
+playerScroll.BackgroundTransparency = 1
+playerScroll.BorderSizePixel = 0
+playerScroll.CanvasSize = UDim2.new(0,0,0,0)
+playerScroll.ScrollBarThickness = 3
+playerScroll.Parent = playerFrame
+
+local playerLayout = Instance.new("UIListLayout")
+playerLayout.Padding = UDim.new(0,5)
+playerLayout.Parent = playerScroll
+
+-- ========== PAINEL DE PERSONAGENS (DIREITA) ==========
+local charFrame = Instance.new("Frame")
+charFrame.Size = UDim2.new(0,240,1,-45)
+charFrame.Position = UDim2.new(0,230,0,40)
+charFrame.BackgroundColor3 = Color3.fromRGB(25,25,25)
+charFrame.BorderSizePixel = 0
+charFrame.Parent = main
+
+local charCorner = Instance.new("UICorner")
+charCorner.CornerRadius = UDim.new(0,8)
+charCorner.Parent = charFrame
+
+local charTitle = Instance.new("TextLabel")
+charTitle.Size = UDim2.new(1,0,0,25)
+charTitle.Position = UDim2.new(0,0,0,0)
+charTitle.BackgroundColor3 = DarkPurple
+charTitle.Text = "📋 PERSONAGENS DISPONÍVEIS"
+charTitle.TextColor3 = Color3.new(1,1,1)
+charTitle.TextSize = 11
+charTitle.Font = Enum.Font.GothamBold
+charTitle.Parent = charFrame
+
+local charTitleCorner = Instance.new("UICorner")
+charTitleCorner.CornerRadius = UDim.new(0,8)
+charTitleCorner.Parent = charTitle
+
+local charScroll = Instance.new("ScrollingFrame")
+charScroll.Size = UDim2.new(1,-10,1,-35)
+charScroll.Position = UDim2.new(0,5,0,30)
+charScroll.BackgroundTransparency = 1
+charScroll.BorderSizePixel = 0
+charScroll.CanvasSize = UDim2.new(0,0,0,0)
+charScroll.ScrollBarThickness = 3
+charScroll.Parent = charFrame
+
+local charLayout = Instance.new("UIListLayout")
+charLayout.Padding = UDim.new(0,5)
+charLayout.Parent = charScroll
+
+-- ========== BOTÕES PRINCIPAIS (CENTRO) ==========
+local buttonPanel = Instance.new("Frame")
+buttonPanel.Size = UDim2.new(0,270,1,-45)
+buttonPanel.Position = UDim2.new(1,-275,0,40)
+buttonPanel.BackgroundTransparency = 1
+buttonPanel.Parent = main
+
+local buttons = {}
+
+local buttonConfigs = {
+    {name = "TELEPORT", text = "🚀 TP", color = PurpleColor, row = 0, col = 0},
+    {name = "VISION", text = "👁️ VISÃO", color = PurpleColor, row = 0, col = 1},
+    {name = "BRING", text = "✨ TRAZER", color = PurpleColor, row = 0, col = 2},
+    {name = "NOCLIP", text = "🧱 NOCLIP", color = DarkPurple, row = 1, col = 0},
+    {name = "HITBOX", text = "📦 HITBOX", color = DarkPurple, row = 1, col = 1},
+    {name = "TARGETNOCLIP", text = "🎯 NOCLIP ALVO", color = DarkPurple, row = 1, col = 2},
+    {name = "SIZE", text = "📏 TAMANHO", color = DarkPurple, row = 2, col = 0},
+    {name = "SWAPCHAR", text = "🔄 TROCAR CHAR", color = GreenColor, row = 2, col = 1},
+    {name = "EXIT", text = "❌ SAIR", color = Color3.fromRGB(60,60,60), row = 2, col = 2}
+}
+
+for _, cfg in ipairs(buttonConfigs) do
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0,85,0,30)
+    btn.Position = UDim2.new(0, 5 + (cfg.col * 88), 0, 5 + (cfg.row * 38))
+    btn.BackgroundColor3 = cfg.color
+    btn.Text = cfg.text
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.TextSize = 10
+    btn.Font = Enum.Font.GothamSemibold
+    btn.Parent = buttonPanel
+    
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.CornerRadius = UDim.new(0,6)
+    btnCorner.Parent = btn
+    
+    buttons[cfg.name] = btn
+end
+
+-- INPUT PARA TAMANHO DA HITBOX
+local sizeInput = Instance.new("TextBox")
+sizeInput.Size = UDim2.new(0,85,0,30)
+sizeInput.Position = UDim2.new(0,5,0,79)
+sizeInput.BackgroundColor3 = Color3.fromRGB(40,40,40)
+sizeInput.Text = "5"
+sizeInput.TextColor3 = Color3.new(1,1,1)
+sizeInput.TextSize = 11
+sizeInput.Font = Enum.Font.Gotham
+sizeInput.PlaceholderText = "Tamanho (1-300)"
+sizeInput.Visible = false
+sizeInput.Parent = buttonPanel
+
+local inputCorner = Instance.new("UICorner")
+inputCorner.CornerRadius = UDim.new(0,6)
+inputCorner.Parent = sizeInput
+
+-- INFO LABEL
+local infoLabel = Instance.new("TextLabel")
+infoLabel.Size = UDim2.new(0,730,0,20)
+infoLabel.Position = UDim2.new(0,5,1,-25)
+infoLabel.BackgroundTransparency = 1
+infoLabel.Text = "✅ Selecione um jogador na lista | Clique em um personagem para trocar"
+infoLabel.TextColor3 = LightPurple
+infoLabel.TextSize = 10
+infoLabel.TextXAlignment = Enum.TextXAlignment.Left
+infoLabel.Parent = main
+
+-- ========== FUNÇÃO PARA DETECTAR PERSONAGENS DO JOGO ==========
+local function DetectAvailableCharacters()
+    characterList = {}
+    
+    -- Limpar lista antiga
+    for _, child in pairs(charScroll:GetChildren()) do
+        if child:IsA("TextButton") then
+            child:Destroy()
+        end
+    end
+    
+    -- MÉTODO 1: Procurar em ReplicatedStorage
+    local storageChars = ReplicatedStorage:FindFirstChild("Characters") or 
+                         ReplicatedStorage:FindFirstChild("Character") or
+                         ReplicatedStorage:FindFirstChild("Chars")
+    
+    if storageChars then
+        for _, child in pairs(storageChars:GetChildren()) do
+            if child:IsA("Folder") or child:IsA("Model") or (child:IsA("ModuleScript") and not table.find(characterList, child.Name)) then
+                table.insert(characterList, child.Name)
+            end
+        end
+    end
+    
+    -- MÉTODO 2: Procurar em StarterPlayer
+    local starterPlayer = game:GetService("StarterPlayer")
+    local starterChars = starterPlayer:FindFirstChild("StarterCharacter") or
+                         starterPlayer:FindFirstChild("StarterCharacters")
+    
+    if starterChars then
+        if starterChars:IsA("Model") then
+            table.insert(characterList, starterChars.Name)
+        elseif starterChars:IsA("Folder") then
+            for _, child in pairs(starterChars:GetChildren()) do
+                if child:IsA("Model") then
+                    table.insert(characterList, child.Name)
+                end
+            end
+        end
+    end
+    
+    -- MÉTODO 3: Procurar em Workspace (personagens carregados)
+    for _, child in pairs(Workspace:GetChildren()) do
+        if child:IsA("Model") and child:FindFirstChild("Humanoid") and child ~= LocalPlayer.Character then
+            local charName = child.Name
+            if not table.find(characterList, charName) then
+                table.insert(characterList, charName)
+            end
+        end
+    end
+    
+    -- MÉTODO 4: Lista manual de personagens comuns (fallback)
+    if #characterList == 0 then
+        characterList = {
+            "Default", "Character", "Player", "Robloxian",
+            "Noob", "Guest", "Developer", "Admin"
+        }
+    end
+    
+    -- Remover duplicatas
+    local uniqueList = {}
+    for _, name in pairs(characterList) do
+        if not table.find(uniqueList, name) then
+            table.insert(uniqueList, name)
+        end
+    end
+    characterList = uniqueList
+    
+    -- Criar botões na UI
+    for _, charName in pairs(characterList) do
+        local charBtn = Instance.new("TextButton")
+        charBtn.Size = UDim2.new(1,0,0,35)
+        charBtn.BackgroundColor3 = Color3.fromRGB(35,35,35)
+        charBtn.Text = "👤 " .. charName
+        charBtn.TextColor3 = Color3.new(1,1,1)
+        charBtn.TextSize = 11
+        charBtn.Font = Enum.Font.Gotham
+        charBtn.TextXAlignment = Enum.TextXAlignment.Left
+        charBtn.Parent = charScroll
+        
+        local btnCorner = Instance.new("UICorner")
+        btnCorner.CornerRadius = UDim.new(0,5)
+        btnCorner.Parent = charBtn
+        
+        -- Ao clicar, trocar personagem
+        charBtn.MouseButton1Click:Connect(function()
+            Settings.SelectedCharacter = charName
+            ChangeCharacter(charName)
+        end)
+    end
+    
+    charLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        charScroll.CanvasSize = UDim2.new(0,0,0,charLayout.AbsoluteContentSize.Y + 10)
+    end)
+    
+    infoLabel.Text = "🎮 " .. #characterList .. " personagens encontrados!"
+    task.wait(1.5)
+    infoLabel.Text = "✅ Selecione um jogador na lista | Clique em um personagem para trocar"
+end
+
+-- ========== FUNÇÃO PARA TROCAR PERSONAGEM ==========
+local function ChangeCharacter(characterName)
+    if not characterName then 
+        infoLabel.Text = "❌ Nenhum personagem selecionado!"
+        return 
+    end
+    
+    buttons.SWAPCHAR.BackgroundColor3 = LightPurple
+    
+    -- Método 1: Usar RemoteEvent (mais comum)
+    local remoteEvent = ReplicatedStorage:FindFirstChild("CharacterSwap") or
+                        ReplicatedStorage:FindFirstChild("ChangeCharacter") or
+                        ReplicatedStorage:FindFirstChild("SetCharacter") or
+                        ReplicatedStorage:FindFirstChild("SelectCharacter")
+    
+    if remoteEvent and remoteEvent:IsA("RemoteEvent") then
+        remoteEvent:FireServer(characterName)
+        infoLabel.Text = "🔄 Trocando para: " .. characterName
+    else
+        -- Método 2: Usar BindableFunction
+        local bindFunc = ReplicatedStorage:FindFirstChild("CharacterService") or
+                         ReplicatedStorage:FindFirstChild("CharacterHandler")
+        
+        if bindFunc and bindFunc:IsA("BindableFunction") then
+            bindFunc:Invoke(characterName)
+            infoLabel.Text = "🔄 Trocando para: " .. characterName
+        else
+            -- Método 3: Forçar respawn com novo personagem
+            local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+            if playerGui then
+                local characterButton = playerGui:FindFirstChild(characterName) or
+                                       playerGui:FindFirstChild("Character_" .. characterName)
+                if characterButton and characterButton:IsA("TextButton") then
+                    characterButton:Click()
+                    infoLabel.Text = "🔄 Trocando para: " .. characterName
+                else
+                    -- Método 4: Simular clique em GUI (último recurso)
+                    local success = false
+                    local function searchAndClick(parent)
+                        for _, child in pairs(parent:GetChildren()) do
+                            if child:IsA("TextButton") and string.find(child.Name or "", characterName) then
+                                child:Click()
+                                success = true
+                                return
+                            end
+                            if not success then
+                                searchAndClick(child)
+                            end
+                        end
+                    end
+                    
+                    local guiRoot = game:GetService("CoreGui")
+                    searchAndClick(guiRoot)
+                    
+                    if success then
+                        infoLabel.Text = "🔄 Trocando para: " .. characterName
+                    else
+                        infoLabel.Text = "⚠️ Não foi possível trocar para " .. characterName .. " automaticamente"
+                        buttons.SWAPCHAR.BackgroundColor3 = RedColor
+                        task.wait(1.5)
+                        buttons.SWAPCHAR.BackgroundColor3 = GreenColor
+                        return
+                    end
+                end
+            end
+        end
+    end
+    
+    task.wait(1)
+    buttons.SWAPCHAR.BackgroundColor3 = GreenColor
+    task.wait(0.5)
+    infoLabel.Text = "✅ Selecione um jogador na lista | Clique em um personagem para trocar"
+end
+
+-- ========== HITBOX FUNCIONAL ==========
+local function CreateFunctionalHitboxForPlayer(player)
+    if not player or player == LocalPlayer then return end
+    if not player.Character then return end
+    
+    local character = player.Character
+    local humanoid = character:FindFirstChild("Humanoid")
+    local rootPart = character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("UpperTorso")
+    
+    if rootPart and humanoid and humanoid.Health > 0 then
+        if hitboxConnections[player] then
+            return
+        end
+        
+        local hitbox = Instance.new("Part")
+        hitbox.Size = Vector3.new(Settings.HitboxSize, Settings.HitboxSize, Settings.HitboxSize)
+        hitbox.Transparency = 0.35
+        hitbox.Color = PurpleColor
+        hitbox.Material = Enum.Material.Neon
+        hitbox.Anchored = false
+        hitbox.CanCollide = false
+        hitbox.CanQuery = true
+        hitbox.CanTouch = true
+        
+        local weld = Instance.new("WeldConstraint")
+        weld.Part0 = hitbox
+        weld.Part1 = rootPart
+        weld.Parent = hitbox
+        
+        hitbox.Parent = workspace
+        
+        -- Script de dano com mudança de cor
+        local damageScript = Instance.new("Script")
+        damageScript.Source = [[
+            local hitboxPart = script.Parent
+            local targetCharacter = ]] .. tostring(character) .. [[
+            local targetHumanoid = targetCharacter and targetCharacter:FindFirstChild("Humanoid")
+            
+            local playersAttacked = {}
+            local damageTimer = nil
+            
+            local function SetRedColor()
+                hitboxPart.Color = Color3.fromRGB(255, 0, 0)
+                hitboxPart.Transparency = 0.3
+            end
+            
+            local function SetPurpleColor()
+                hitboxPart.Color = Color3.fromRGB(128, 0, 255)
+                hitboxPart.Transparency = 0.35
+            end
+            
+            hitboxPart.Touched:Connect(function(hit)
+                local playerChar = hit and hit.Parent
+                if not playerChar then return end
+                
+                local humanoid = playerChar:FindFirstChild("Humanoid")
+                if not humanoid then return end
+                
+                local player = game:GetService("Players"):GetPlayerFromCharacter(playerChar)
+                if not player then return end
+                
+                if playerChar == targetCharacter then return end
+                
+                local lastAttack = playersAttacked[player]
+                if lastAttack and tick() - lastAttack < 0.3 then
+                    return
+                end
+                
+                playersAttacked[player] = tick()
+                SetRedColor()
+                
+                if targetHumanoid and targetHumanoid.Health > 0 then
+                    local hitboxSize = hitboxPart.Size.X
+                    local damage = math.min(25, math.floor(hitboxSize * 1.5))
+                    targetHumanoid.Health = math.max(0, targetHumanoid.Health - damage)
+                end
+                
+                if damageTimer then
+                    game:GetService("RunService").Stepped:Wait()
+                end
+                
+                damageTimer = game:GetService("RunService").Stepped:Connect(function()
+                    wait(0.2)
+                    SetPurpleColor()
+                    if damageTimer then
+                        damageTimer:Disconnect()
+                        damageTimer = nil
+                    end
+                end)
+            end)
+        ]]
+        damageScript.Disabled = false
+        damageScript.Parent = hitbox
+        
+        hitboxConnections[player] = {
+            hitbox = hitbox,
+            weld = weld,
+            script = damageScript
+        }
+        
+        local updateColor = function()
+            if hitbox and hitbox.Parent then
+                if humanoid.Health <= 0 then
+                    hitbox.Color = Color3.fromRGB(60,60,60)
+                    hitbox.Transparency = 0.7
+                else
+                    hitbox.Color = PurpleColor
+                    hitbox.Transparency = 0.35
+                end
+            end
+        end
+        
+        updateColor()
+        humanoid:GetPropertyChangedSignal("Health"):Connect(updateColor)
+        
+        humanoid.Died:Connect(function()
+            if hitboxConnections[player] then
+                if hitboxConnections[player].hitbox then
+                    hitboxConnections[player].hitbox:Destroy()
+                end
+                hitboxConnections[player] = nil
+            end
+        end)
+    end
+end
+
+local function RemoveAllHitboxes()
+    for player, data in pairs(hitboxConnections) do
+        if data.hitbox then
+            data.hitbox:Destroy()
+        end
+    end
+    hitboxConnections = {}
+end
+
+local function EnableGlobalHitbox()
+    RemoveAllHitboxes()
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            task.wait(0.1)
+            CreateFunctionalHitboxForPlayer(player)
+        end
+    end
+    
+    local function onPlayerAdded(player)
+        if player ~= LocalPlayer then
+            task.wait(0.5)
+            if Settings.HitboxEnabled then
+                CreateFunctionalHitboxForPlayer(player)
+            end
+        end
+    end
+    
+    local function onCharacterAdded(character, player)
+        task.wait(0.5)
+        if Settings.HitboxEnabled then
+            CreateFunctionalHitboxForPlayer(player)
+        end
+    end
+    
+    hitboxConnections["_playerAdded"] = Players.PlayerAdded:Connect(onPlayerAdded)
+    hitboxConnections["_playerRemoving"] = Players.PlayerRemoving:Connect(function(player)
+        if hitboxConnections[player] then
+            if hitboxConnections[player].hitbox then
+                hitboxConnections[player].hitbox:Destroy()
+            end
+            hitboxConnections[player] = nil
+        end
+    end)
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local connection = player.CharacterAdded:Connect(function(character)
+                onCharacterAdded(character, player)
+            end)
+            hitboxConnections["_char_" .. player.Name] = connection
+        end
+    end
+end
+
+local function DisableGlobalHitbox()
+    RemoveAllHitboxes()
+    
+    if hitboxConnections["_playerAdded"] then
+        hitboxConnections["_playerAdded"]:Disconnect()
+    end
+    if hitboxConnections["_playerRemoving"] then
+        hitboxConnections["_playerRemoving"]:Disconnect()
+    end
+    
+    for key, conn in pairs(hitboxConnections) do
+        if type(key) == "string" and string.sub(key, 1, 6) == "_char_" then
+            if conn then conn:Disconnect() end
+        end
+    end
+    
+    hitboxConnections = {}
+end
+
+local function ToggleHitbox()
+    Settings.HitboxEnabled = not Settings.HitboxEnabled
+    
+    if Settings.HitboxEnabled then
+        EnableGlobalHitbox()
+        buttons.HITBOX.BackgroundColor3 = LightPurple
+        sizeInput.Visible = true
+        infoLabel.Text = "✅ Hitbox GLOBAL: ATIVADO (Roxo🔮 | Fica Vermelho🔴 ao dar dano)"
+    else
+        DisableGlobalHitbox()
+        buttons.HITBOX.BackgroundColor3 = DarkPurple
+        sizeInput.Visible = false
+        infoLabel.Text = "❌ Hitbox GLOBAL: DESATIVADO"
+    end
+    task.wait(1.5)
+    infoLabel.Text = "✅ Selecione um jogador na lista | Clique em um personagem para trocar"
+end
+
+-- ========== BRING (TRAZER) ==========
+local function BringPlayer(player)
+    if not player or not player.Character then 
+        infoLabel.Text = "❌ Jogador inválido!"
+        return false 
+    end
+    
+    local targetRoot = player.Character:FindFirstChild("HumanoidRootPart")
+    local myCharacter = LocalPlayer.Character
+    
+    if not targetRoot or not myCharacter then 
+        infoLabel.Text = "❌ Personagem não encontrado!"
+        return false 
+    end
+    
+    local myRoot = myCharacter:FindFirstChild("HumanoidRootPart")
+    if not myRoot then return false end
+    
+    buttons.BRING.BackgroundColor3 = LightPurple
+    
+    local bringPosition = myRoot.CFrame + (myRoot.CFrame.LookVector * 2)
+    
+    local originalCollision = {}
+    for _, part in pairs(player.Character:GetDescendants()) do
+        if part:IsA("BasePart") then
+            originalCollision[part] = part.CanCollide
+            part.CanCollide = false
+        end
+    end
+    
+    targetRoot.CFrame = bringPosition
+    
+    infoLabel.Text = "✨ " .. player.Name .. " foi trazido até você!"
+    task.wait(0.5)
+    buttons.BRING.BackgroundColor3 = PurpleColor
+    
+    task.wait(1)
+    for part, collidable in pairs(originalCollision) do
+        if part and part.Parent then
+            part.CanCollide = collidable
+        end
+    end
+    
+    task.wait(0.5)
+    infoLabel.Text = "✅ Selecione um jogador na lista | Clique em um personagem para trocar"
+    
+    return true
+end
+
+-- ========== NOCLIP PRÓPRIO ==========
+local function EnableNoclip()
+    if noclipConnection then
+        noclipConnection:Disconnect()
+    end
+    
+    noclipConnection = RunService.Stepped:Connect(function()
+        local character = LocalPlayer.Character
+        if character then
+            local humanoid = character:FindFirstChild("Humanoid")
+            if humanoid and humanoid.Health > 0 then
+                for _, part in pairs(character:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.CanCollide = false
+                    end
+                end
+            end
+        end
+    end)
+    
+    Settings.NoclipEnabled = true
+    buttons.NOCLIP.BackgroundColor3 = LightPurple
+    infoLabel.Text = "✅ NoClip: ATIVADO"
+    task.wait(1)
+    infoLabel.Text = "✅ Selecione um jogador na lista | Clique em um personagem para trocar"
+end
+
+local function DisableNoclip()
+    if noclipConnection then
+        noclipConnection:Disconnect()
+        noclipConnection = nil
+    end
+    
+    local character = LocalPlayer.Character
+    if character then
+        for _, part in pairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = true
+            end
+        end
+    end
+    
+    Settings.NoclipEnabled = false
+    buttons.NOCLIP.BackgroundColor3 = DarkPurple
+    infoLabel.Text = "❌ NoClip: DESATIVADO"
+    task.wait(1)
+    infoLabel.Text = "✅ Selecione um jogador na lista | Clique em um personagem para trocar"
+end
+
+-- ========== TARGET NOCLIP ==========
+local function EnableTargetNoclip(player)
+    if not player or not player.Character then 
+        infoLabel.Text = "❌ Jogador sem personagem!"
+        return 
+    end
+    
+    if targetNoclipConnection then
+        targetNoclipConnection:Disconnect()
+        targetNoclipConnection = nil
+    end
+    
+    targetNoclipConnection = RunService.Stepped:Connect(function()
+        if player and player.Character and player.Character.Parent then
+            for _, part in pairs(player.Character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
+            end
+        end
+    end)
+    
+    Settings.TargetNoclipEnabled = true
+    buttons.TARGETNOCLIP.BackgroundColor3 = LightPurple
+    infoLabel.Text = "✅ " .. player.Name .. " agora atravessa paredes!"
+    task.wait(1.5)
+    infoLabel.Text = "✅ Selecione um jogador na lista | Clique em um personagem para trocar"
+end
+
+local function DisableTargetNoclip()
+    if targetNoclipConnection then
+        targetNoclipConnection:Disconnect()
+        targetNoclipConnection = nil
+    end
+    
+    if Settings.SelectedPlayer and Settings.SelectedPlayer.Character then
+        for _, part in pairs(Settings.SelectedPlayer.Character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = true
+            end
+        end
+    end
+    
+    Settings.TargetNoclipEnabled = false
+    buttons.TARGETNOCLIP.BackgroundColor3 = DarkPurple
+    infoLabel.Text = "❌ NoClip do alvo: DESATIVADO"
+    task.wait(1)
+    infoLabel.Text = "✅ Selecione um jogador na lista | Clique em um personagem para trocar"
+end
+
+-- ========== TELEPORT ==========
+local function TeleportToPlayer(player)
+    if not player or not player.Character then 
+        infoLabel.Text = "❌ Jogador inválido!"
+        return false 
+    end
+    
+    local targetRoot = player.Character:FindFirstChild("HumanoidRootPart")
+    local myCharacter = LocalPlayer.Character
+    
+    if not targetRoot or not myCharacter then 
+        infoLabel.Text = "❌ Personagem não encontrado!"
+        return false 
+    end
+    
+    local myRoot = myCharacter:FindFirstChild("HumanoidRootPart")
+    if not myRoot then return false end
+    
+    buttons.TELEPORT.BackgroundColor3 = LightPurple
+    myRoot.CFrame = targetRoot.CFrame + Vector3.new(0, 3, 0)
+    
+    infoLabel.Text = "✅ Teleportado para " .. player.Name
+    task.wait(0.5)
+    buttons.TELEPORT.BackgroundColor3 = PurpleColor
+    task.wait(0.5)
+    infoLabel.Text = "✅ Selecione um jogador na lista | Clique em um personagem para trocar"
+    
+    return true
+end
+
+-- ========== VISION ==========
+local function EnableVision()
+    if currentEffect then
+        DisableVision()
+    end
+    
+    local bloom = Instance.new("BloomEffect")
+    bloom.Name = "AghataBloom"
+    bloom.Intensity = 0.15
+    bloom.Size = 8
+    bloom.Threshold = 0.9
+    bloom.Parent = Lighting
+    
+    local colorCorrection = Instance.new("ColorCorrectionEffect")
+    colorCorrection.Name = "AghataColor"
+    colorCorrection.TintColor = LightPurple
+    colorCorrection.Contrast = 0.03
+    colorCorrection.Brightness = 0.01
+    colorCorrection.Saturation = 0.05
+    colorCorrection.Parent = Lighting
+    
+    currentEffect = {bloom, colorCorrection}
+end
+
+local function DisableVision()
+    if currentEffect then
+        for _, effect in pairs(currentEffect) do
+            if effect and effect.Parent then
+                effect:Destroy()
+            end
+        end
+        currentEffect = nil
+    end
+    
+    if currentConnection then
+        currentConnection:Disconnect()
+        currentConnection = nil
+    end
+    
+    local character = LocalPlayer.Character
+    if character then
+        local humanoid = character:FindFirstChild("Humanoid")
+        if humanoid then
+            Camera.CameraSubject = humanoid
+        end
+    end
+end
+
+local function ViewPlayer(player)
+    DisableVision()
+    
+    if not player or not player.Character then
+        infoLabel.Text = "❌ Jogador inválido!"
+        return
+    end
+    
+    local humanoid = player.Character:FindFirstChild("Humanoid")
+    
+    if humanoid and humanoid.Health > 0 then
+        EnableVision()
+        Camera.CameraSubject = humanoid
+        
+        infoLabel.Text = "👁️ Visualizando: " .. player.Name
+        
+        currentConnection = RunService.RenderStepped:Connect(function()
+            if not player.Character or not player.Character.Parent then
+                DisableVision()
+                infoLabel.Text = "✅ Visualização encerrada"
+            end
+            
+            local currentHumanoid = player.Character:FindFirstChild("Humanoid")
+            if not currentHumanoid or currentHumanoid.Health <= 0 then
+                DisableVision()
+                infoLabel.Text = "✅ Visualização encerrada"
+            end
+        end)
+    else
+        infoLabel.Text = "❌ Jogador inválido ou morto!"
+    end
+end
+
+-- ========== PLAYER LIST ==========
+local function AddPlayerToList(player)
+    if player == LocalPlayer then return end
+    
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1,0,0,30)
+    btn.BackgroundColor3 = Color3.fromRGB(35,35,35)
+    btn.Text = player.Name
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.TextSize = 11
+    btn.Font = Enum.Font.Gotham
+    btn.Parent = playerScroll
+    
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.CornerRadius = UDim.new(0,5)
+    btnCorner.Parent = btn
+    
+    btn.MouseButton1Click:Connect(function()
+        Settings.SelectedPlayer = player
+        
+        for _, v in pairs(playerScroll:GetChildren()) do
+            if v:IsA("TextButton") then
+                v.BackgroundColor3 = Color3.fromRGB(35,35,35)
+            end
+        end
+        
+        btn.BackgroundColor3 = PurpleColor
+        infoLabel.Text = "✅ Selecionado: " .. player.Name
+        task.wait(1)
+        infoLabel.Text = "✅ Selecione um jogador na lista | Clique em um personagem para trocar"
+    end)
+end
+
+for _, player in pairs(Players:GetPlayers()) do
+    AddPlayerToList(player)
+end
+
+Players.PlayerAdded:Connect(AddPlayerToList)
+Players.PlayerRemoving:Connect(function(player)
+    if Settings.SelectedPlayer == player then
+        Settings.SelectedPlayer = nil
+    end
+end)
+
+playerLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    playerScroll.CanvasSize = UDim2.new(0,0,0,playerLayout.AbsoluteContentSize.Y + 10)
+end)
+
+-- ========== BOTÕES ==========
+buttons.TELEPORT.MouseButton1Click:Connect(function()
+    if Settings.SelectedPlayer then
+        TeleportToPlayer(Settings.SelectedPlayer)
+    else
+        infoLabel.Text = "❌ Selecione um jogador primeiro!"
+        task.wait(1)
+        infoLabel.Text = "✅ Selecione um jogador na lista | Clique em um personagem para trocar"
+    end
+end)
+
+buttons.VISION.MouseButton1Click:Connect(function()
+    if Settings.SelectedPlayer then
+        ViewPlayer(Settings.SelectedPlayer)
+    else
+        infoLabel.Text = "❌ Selecione um jogador primeiro!"
+        task.wait(1)
+        infoLabel.Text = "✅ Selecione um jogador na lista | Clique em um personagem para trocar"
+    end
+end)
+
+buttons.BRING.MouseButton1Click:Connect(function()
+    if Settings.SelectedPlayer then
+        BringPlayer(Settings.SelectedPlayer)
+    else
+        infoLabel.Text = "❌ Selecione um jogador primeiro!"
+        task.wait(1)
+        infoLabel.Text = "✅ Selecione um jogador na lista | Clique em um personagem para trocar"
+    end
+end)
+
+buttons.NOCLIP.MouseButton1Click:Connect(function()
+    if Settings.NoclipEnabled then
+        DisableNoclip()
+    else
+        EnableNoclip()
+    end
+end)
+
+buttons.HITBOX.MouseButton1Click:Connect(ToggleHitbox)
+
+buttons.TARGETNOCLIP.MouseButton1Click:Connect(function()
+    if Settings.SelectedPlayer then
+        if Settings.TargetNoclipEnabled then
+            DisableTargetNoclip()
+        else
+            EnableTargetNoclip(Settings.SelectedPlayer)
+        end
+    else
+        infoLabel.Text = "❌ Selecione um jogador primeiro!"
+        task.wait(1)
+        infoLabel.Text = "✅ Selecione um jogador na lista | Clique em um personagem para trocar"
+    end
+end)
+
+buttons.SWAPCHAR.MouseButton1Click:Connect(function()
+    if Settings.SelectedCharacter then
+        ChangeCharacter(Settings.SelectedCharacter)
+    else
+        infoLabel.Text = "❌ Clique em um personagem da lista primeiro!"
+        task.wait(1)
+        infoLabel.Text = "✅ Selecione um jogador na lista | Clique em um personagem para trocar"
+    end
+end)
+
+buttons.SIZE.MouseButton1Click:Connect(function()
+    sizeInput.Visible = not sizeInput.Visible
+    if sizeInput.Visible then
+        sizeInput.Text = tostring(Settings.HitboxSize)
+    end
+end)
+
+sizeInput.FocusLost:Connect(function(enterPressed)
+    if enterPressed then
+        local newSize = tonumber(sizeInput.Text)
+        if newSize and newSize >= 1 and newSize <= 300 then
+            Settings.HitboxSize = newSize
+            infoLabel.Text = "📏 Hitbox size alterado para: " .. Settings.HitboxSize
+            if Settings.HitboxEnabled then
+                DisableGlobalHitbox()
+                EnableGlobalHitbox()
+            end
+        else
+            infoLabel.Text = "❌ Tamanho inválido! Use 1-300"
+            sizeInput.Text = tostring(Settings.HitboxSize)
+        end
+        sizeInput.Visible = false
+        task.wait(1)
+        infoLabel.Text = "✅ Selecione um jogador na lista | Clique em um personagem para trocar"
+    end
+end)
+
+buttons.EXIT.MouseButton1Click:Connect(function()
+    DisableVision()
+    DisableNoclip()
+    DisableTargetNoclip()
+    DisableGlobalHitbox()
+    Settings.HitboxEnabled = false
+    Settings.NoclipEnabled = false
+    Settings.TargetNoclipEnabled = false
+    infoLabel.Text = "✅ Todos os sistemas desativados"
+    task.wait(1)
+    infoLabel.Text = "✅ Selecione um jogador na lista | Clique em um personagem para trocar"
+end)
+
+-- MINIMIZE
+minimize.MouseButton1Click:Connect(function()
+    main.Visible = false
+    mini.Visible = true
+end)
+
+mini.MouseButton1Click:Connect(function()
+    main.Visible = true
+    mini.Visible = false
+end)
+
+-- DETECTAR PERSONAGENS
+task.wait(0.5)
+DetectAvailableCharacters()
+
+-- SUCESSO
+print("✅ Aghata Hub v4.0 CARREGADO com sucesso!")
+infoLabel.Text = "✅ Aghata Hub v4.0 CARREGADO! Detectando personagens..."
+task.wait(2)
+infoLabel.Text = "✅ Selecione um jogador na lista | Clique em um personagem para trocar"
